@@ -1,7 +1,7 @@
-import express from 'express';
-import http from 'http';
-import { Server } from 'socket.io';
-import cors from 'cors';
+import express from "express";
+import http from "http";
+import { Server } from "socket.io";
+import cors from "cors";
 
 const app = express();
 app.use(cors());
@@ -10,8 +10,8 @@ app.use(express.json());
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: '*',
-    methods: ['GET', 'POST'],
+    origin: "*",
+    methods: ["GET", "POST"],
   },
 });
 
@@ -34,7 +34,7 @@ setInterval(() => {
   }
 }, 60 * 1000);
 
-app.post('/room', (req, res) => {
+app.post("/room", (req, res) => {
   let code = genCode();
   while (rooms[code]) {
     code = genCode();
@@ -43,24 +43,24 @@ app.post('/room', (req, res) => {
   res.json({ code });
 });
 
-io.on('connection', (socket) => {
-  socket.on('join_room', (payload) => {
+io.on("connection", (socket) => {
+  socket.on("join_room", (payload) => {
     try {
       handleJoinRoom(socket, payload);
     } catch (err) {
-      socket.emit('error_msg', err.message || 'Failed to join room');
+      socket.emit("error_msg", err.message || "Failed to join room");
     }
   });
 
-  socket.on('move', (payload) => {
+  socket.on("move", (payload) => {
     try {
       handleMove(socket, payload);
     } catch (err) {
-      socket.emit('error_msg', err.message || 'Failed to apply move');
+      socket.emit("error_msg", err.message || "Failed to apply move");
     }
   });
 
-  socket.on('disconnect', () => {
+  socket.on("disconnect", () => {
     handleDisconnect(socket);
   });
 });
@@ -74,8 +74,8 @@ server.listen(PORT, () => {
  * @returns {string}
  */
 export function genCode() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  let code = '';
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  let code = "";
   for (let i = 0; i < 6; i += 1) {
     const index = Math.floor(Math.random() * chars.length);
     code += chars[index];
@@ -93,7 +93,7 @@ function createRoom(code) {
     code,
     players: [],
     state: initialState(),
-    sideToMove: 'WHITE',
+    sideToMove: "WHITE",
     lastActive: Date.now(),
   };
 }
@@ -105,20 +105,20 @@ function createRoom(code) {
  */
 function handleJoinRoom(socket, payload = {}) {
   const { code, uid } = payload;
-  if (!code || typeof code !== 'string') {
-    throw new Error('Room code is required');
+  if (!code || typeof code !== "string") {
+    throw new Error("Room code is required");
   }
-  if (!uid || typeof uid !== 'string') {
-    throw new Error('User id is required');
+  if (!uid || typeof uid !== "string") {
+    throw new Error("User id is required");
   }
   const room = rooms[code];
   if (!room) {
-    throw new Error('Room not found');
+    throw new Error("Room not found");
   }
 
   const existing = room.players.find((p) => p.uid === uid);
   if (!existing && room.players.length >= 2) {
-    throw new Error('Room is full');
+    throw new Error("Room is full");
   }
 
   const previousMembership = socket.data.membership;
@@ -132,7 +132,7 @@ function handleJoinRoom(socket, payload = {}) {
     existing.socketId = socket.id;
     player = existing;
   } else {
-    const color = room.players.length === 0 ? 'WHITE' : 'BLACK';
+    const color = room.players.length === 0 ? "WHITE" : "BLACK";
     player = { uid, color, socketId: socket.id };
     room.players.push(player);
   }
@@ -151,38 +151,38 @@ function handleJoinRoom(socket, payload = {}) {
 function handleMove(socket, payload = {}) {
   const membership = socket.data.membership;
   if (!membership) {
-    throw new Error('You are not joined to a room');
+    throw new Error("You are not joined to a room");
   }
 
   const { code, move } = payload;
-  if (!code || typeof code !== 'string') {
-    throw new Error('Room code is required');
+  if (!code || typeof code !== "string") {
+    throw new Error("Room code is required");
   }
   if (membership.code !== code) {
-    throw new Error('You are not part of this room');
+    throw new Error("You are not part of this room");
   }
-  if (!move || typeof move !== 'object') {
-    throw new Error('Move payload is required');
+  if (!move || typeof move !== "object") {
+    throw new Error("Move payload is required");
   }
 
   const room = rooms[code];
   if (!room) {
-    throw new Error('Room not found');
+    throw new Error("Room not found");
   }
 
   const player = room.players.find((p) => p.uid === membership.uid);
   if (!player) {
-    throw new Error('Player not found in room');
+    throw new Error("Player not found in room");
   }
   if (player.color !== room.sideToMove) {
-    throw new Error('Not your turn');
+    throw new Error("Not your turn");
   }
 
   validateMovePayload(move);
 
   // TODO: integrate real chess validation.
   if (!validateLegalMove(room.state, move)) {
-    throw new Error('Illegal move');
+    throw new Error("Illegal move");
   }
 
   applyMoveServer(room, move);
@@ -193,7 +193,7 @@ function handleMove(socket, payload = {}) {
     state: room.state,
   };
 
-  io.to(code).emit('move_applied', response);
+  io.to(code).emit("move_applied", response);
   room.lastActive = Date.now();
 }
 
@@ -204,13 +204,13 @@ function handleMove(socket, payload = {}) {
 function validateMovePayload(move) {
   const { from, to } = move;
   if (!Number.isInteger(from) || !Number.isInteger(to)) {
-    throw new Error('Move coordinates must be integers');
+    throw new Error("Move coordinates must be integers");
   }
   if (from < 0 || from > 63 || to < 0 || to > 63) {
-    throw new Error('Squares must be between 0 and 63');
+    throw new Error("Squares must be between 0 and 63");
   }
   if (from === to) {
-    throw new Error('From and to squares must differ');
+    throw new Error("From and to squares must differ");
   }
 }
 
@@ -221,7 +221,7 @@ function validateMovePayload(move) {
  */
 export function applyMoveServer(room, move) {
   room.state.lastMove = { ...move };
-  room.sideToMove = room.sideToMove === 'WHITE' ? 'BLACK' : 'WHITE';
+  room.sideToMove = room.sideToMove === "WHITE" ? "BLACK" : "WHITE";
 }
 
 /**
@@ -242,7 +242,7 @@ export function validateLegalMove(state, move) {
 export function initialState() {
   return {
     lastMove: null,
-    boardFEN: 'startpos',
+    boardFEN: "startpos",
   };
 }
 
@@ -257,7 +257,7 @@ function emitRoomState(room) {
     sideToMove: room.sideToMove,
     state: room.state,
   };
-  io.to(room.code).emit('room_state', payload);
+  io.to(room.code).emit("room_state", payload);
 }
 
 /**
@@ -282,7 +282,7 @@ function handleDisconnect(socket) {
   }
 
   if (room.players.length === 0) {
-    room.sideToMove = 'WHITE';
+    room.sideToMove = "WHITE";
     room.state = initialState();
   }
 
