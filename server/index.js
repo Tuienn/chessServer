@@ -40,27 +40,40 @@ app.post("/room", (req, res) => {
     code = genCode();
   }
   rooms[code] = createRoom(code);
+  console.log(`[DEBUG] Room created: ${code} at ${new Date().toISOString()}`);
+  console.log(`[DEBUG] Total active rooms: ${Object.keys(rooms).length}`);
   res.json({ code });
 });
 
 io.on("connection", (socket) => {
+  console.log(`[DEBUG] Client connected: ${socket.id}`);
+
   socket.on("join_room", (payload) => {
     try {
+      console.log(`[DEBUG] Join room request from ${socket.id}:`, payload);
       handleJoinRoom(socket, payload);
     } catch (err) {
-      socket.emit("error_msg", err.message || "Failed to join room");
+      console.log(`[DEBUG] Join room error for ${socket.id}:`, err.message);
+      socket.emit("error_msg", {
+        message: err.message || "Failed to join room",
+      });
     }
   });
 
   socket.on("move", (payload) => {
     try {
+      console.log(`[DEBUG] Move request from ${socket.id}:`, payload);
       handleMove(socket, payload);
     } catch (err) {
-      socket.emit("error_msg", err.message || "Failed to apply move");
+      console.log(`[DEBUG] Move error for ${socket.id}:`, err.message);
+      socket.emit("error_msg", {
+        message: err.message || "Failed to apply move",
+      });
     }
   });
 
   socket.on("disconnect", () => {
+    console.log(`[DEBUG] Client disconnected: ${socket.id}`);
     handleDisconnect(socket);
   });
 });
@@ -131,14 +144,34 @@ function handleJoinRoom(socket, payload = {}) {
   if (existing) {
     existing.socketId = socket.id;
     player = existing;
+    console.log(
+      `[DEBUG] Player ${uid} reconnected to room ${code} as ${player.color}`
+    );
   } else {
     const color = room.players.length === 0 ? "WHITE" : "BLACK";
     player = { uid, color, socketId: socket.id };
     room.players.push(player);
+    console.log(`[DEBUG] Player ${uid} joined room ${code} as ${color}`);
   }
   socket.data.membership = { code, uid };
   socket.join(code);
   room.lastActive = Date.now();
+
+  console.log(`[DEBUG] Room ${code} now has ${room.players.length} players`);
+
+  // Emit room_joined to the joining player
+  socket.emit("room_joined", {
+    code: room.code,
+    color: player.color.toLowerCase(), // Convert to lowercase for client
+  });
+
+  // If this is the second player, notify the first player that opponent joined
+  if (room.players.length === 2 && !existing) {
+    const otherPlayer = room.players.find((p) => p.uid !== uid);
+    if (otherPlayer) {
+      io.to(otherPlayer.socketId).emit("opponent_joined", {});
+    }
+  }
 
   emitRoomState(room);
 }
@@ -202,7 +235,7 @@ function handleMove(socket, payload = {}) {
  * @param {ChessMove} move
  */
 function validateMovePayload(move) {
-  const { from, to } = move;
+  const { from, to, promo, isCastle, isEnPassant, isDoublePawnPush } = move;
   if (!Number.isInteger(from) || !Number.isInteger(to)) {
     throw new Error("Move coordinates must be integers");
   }
@@ -212,6 +245,24 @@ function validateMovePayload(move) {
   if (from === to) {
     throw new Error("From and to squares must differ");
   }
+
+  // Validate promotion piece if provided
+  if (promo !== undefined && promo !== null) {
+    if (typeof promo !== "string" || !["Q", "R", "B", "N"].includes(promo)) {
+      throw new Error("Promotion piece must be Q, R, B, or N");
+    }
+  }
+
+  // Validate boolean flags
+  if (isCastle !== undefined && typeof isCastle !== "boolean") {
+    throw new Error("isCastle must be boolean");
+  }
+  if (isEnPassant !== undefined && typeof isEnPassant !== "boolean") {
+    throw new Error("isEnPassant must be boolean");
+  }
+  if (isDoublePawnPush !== undefined && typeof isDoublePawnPush !== "boolean") {
+    throw new Error("isDoublePawnPush must be boolean");
+  }
 }
 
 /**
@@ -220,7 +271,15 @@ function validateMovePayload(move) {
  * @param {ChessMove} move
  */
 export function applyMoveServer(room, move) {
-  room.state.lastMove = { ...move };
+  // Copy all move properties including optional ones
+  room.state.lastMove = {
+    from: move.from,
+    to: move.to,
+    promo: move.promo || null,
+    isCastle: move.isCastle || false,
+    isEnPassant: move.isEnPassant || false,
+    isDoublePawnPush: move.isDoublePawnPush || false,
+  };
   room.sideToMove = room.sideToMove === "WHITE" ? "BLACK" : "WHITE";
 }
 
@@ -291,12 +350,12 @@ function handleDisconnect(socket) {
 
 /**
  * @typedef {Object} ChessMove
- * @property {number} from
- * @property {number} to
- * @property {'Q'|'R'|'B'|'N'} [promo]
- * @property {boolean} [isCastle]
- * @property {boolean} [isEnPassant]
- * @property {boolean} [isDoublePawnPush]
+ * @property {number} from - Source square (0-63)
+ * @property {number} to - Destination square (0-63)
+ * @property {'Q'|'R'|'B'|'N'|null} [promo] - Promotion piece (for pawn promotion)
+ * @property {boolean} [isCastle] - True if this is a castling move
+ * @property {boolean} [isEnPassant] - True if this is an en passant capture
+ * @property {boolean} [isDoublePawnPush] - True if this is a double pawn push
  */
 
 /**
